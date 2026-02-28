@@ -4,29 +4,45 @@ import PartnerRequest from '@/models/PartnerRequest';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
-// Helper: find a user by username OR email (case-insensitive)
-async function findTargetUser(query) {
-    const q = query.toLowerCase().trim().replace(/^@/, ''); // strip leading @
-    // Try username first, then email
-    return await User.findOne({
-        $or: [
-            { username: q },
-            { email: q },
-        ]
-    }).lean();
+// Serialize a lean doc's ObjectIds to strings
+function serialize(doc) {
+    if (!doc) return null;
+    return JSON.parse(JSON.stringify(doc, (key, val) => {
+        if (val && typeof val === 'object' && val._bsontype === 'ObjectId') {
+            return val.toString();
+        }
+        return val;
+    }));
 }
 
-// GET: fetch my partner info + pending incoming requests
+// Search by username, email, OR name (all case-insensitive)
+async function findTargetUser(query) {
+    const q = query.trim().replace(/^@/, '');
+    const db = mongoose.connection.db;
+    return await db.collection('users').findOne({
+        $or: [
+            { username: { $regex: `^${q}$`, $options: 'i' } },
+            { email: { $regex: `^${q}$`, $options: 'i' } },
+            { name: { $regex: `^${q}$`, $options: 'i' } },
+        ]
+    });
+}
+
+// GET: fetch partner info + pending requests
 export async function GET() {
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         await dbConnect();
-        const me = await User.findById(session.user.id).populate('partnerId', 'name username avatarSeed').lean();
+
+        const me = await User.findById(session.user.id)
+            .populate('partnerId', 'name username avatarSeed')
+            .lean();
 
         const incoming = await PartnerRequest.find({ toUserId: session.user.id, status: 'pending' })
             .populate('fromUserId', 'name username avatarSeed')
@@ -36,10 +52,17 @@ export async function GET() {
             .populate('toUserId', 'name username avatarSeed')
             .lean();
 
+        // Serialize all ObjectIds to plain strings so React gets clean data
         return NextResponse.json({
-            partner: me?.partnerId || null,
-            incoming,
-            outgoing,
+            partner: serialize(me?.partnerId) || null,
+            incoming: incoming.map(r => ({
+                ...serialize(r),
+                _id: r._id.toString(),  // ensure _id is always a plain string
+            })),
+            outgoing: outgoing.map(r => ({
+                ...serialize(r),
+                _id: r._id.toString(),
+            })),
         });
     } catch (error) {
         console.error('[GET PARTNERS ERROR]', error);
@@ -47,7 +70,7 @@ export async function GET() {
     }
 }
 
-// POST: send a partner request by username OR email
+// POST: send a partner request by username, email, or name
 export async function POST(req) {
     try {
         const session = await getServerSession(authOptions);
@@ -56,25 +79,28 @@ export async function POST(req) {
         await dbConnect();
         const body = await req.json();
         const query = (body.username || '').trim();
-        if (!query) return NextResponse.json({ error: 'Username or email required' }, { status: 400 });
+        if (!query) return NextResponse.json({ error: 'Username, email, or name required' }, { status: 400 });
 
         const target = await findTargetUser(query);
         if (!target) {
-            return NextResponse.json({ error: `No user found with username/email "${query}". Ask them to sign up first!` }, { status: 404 });
+            return NextResponse.json({
+                error: `No user found matching "${query}". Try their username, email, or full name.`
+            }, { status: 404 });
         }
-        if (target._id.toString() === session.user.id) {
+
+        const targetId = target._id.toString();
+        if (targetId === session.user.id) {
             return NextResponse.json({ error: 'You cannot partner with yourself' }, { status: 400 });
         }
 
         const me = await User.findById(session.user.id).lean();
         if (me.partnerId) return NextResponse.json({ error: 'You already have an accountability partner' }, { status: 400 });
-        if (target.partnerId) return NextResponse.json({ error: `That user already has a partner` }, { status: 400 });
+        if (target.partnerId) return NextResponse.json({ error: 'That user already has a partner' }, { status: 400 });
 
-        // Check duplicate pending
         const existing = await PartnerRequest.findOne({
             $or: [
-                { fromUserId: session.user.id, toUserId: target._id },
-                { fromUserId: target._id, toUserId: session.user.id },
+                { fromUserId: session.user.id, toUserId: targetId },
+                { fromUserId: targetId, toUserId: session.user.id },
             ],
             status: 'pending',
         });
@@ -82,12 +108,14 @@ export async function POST(req) {
 
         const request = await PartnerRequest.create({
             fromUserId: session.user.id,
-            toUserId: target._id,
+            toUserId: targetId,
         });
-        await request.populate('toUserId', 'name username avatarSeed');
 
         const displayName = target.username ? `@${target.username}` : target.name;
-        return NextResponse.json({ message: `Partner request sent to ${displayName}!`, request }, { status: 201 });
+        return NextResponse.json({
+            message: `Partner request sent to ${displayName}!`,
+            request: { ...serialize(request.toObject()), _id: request._id.toString() },
+        }, { status: 201 });
     } catch (error) {
         console.error('[POST PARTNER ERROR]', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -101,7 +129,7 @@ export async function DELETE() {
         if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         await dbConnect();
         const me = await User.findById(session.user.id);
-        if (me.partnerId) {
+        if (me?.partnerId) {
             await User.findByIdAndUpdate(me.partnerId, { partnerId: null });
             me.partnerId = null;
             await me.save();
