@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
-  reactCompiler: true,
+  // reactCompiler disabled - can interfere with async API routes
 };
 
 export default nextConfig;
