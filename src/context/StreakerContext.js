@@ -120,6 +120,28 @@ export const StreakerProvider = ({ children }) => {
         return { ok: res.ok, message: data.message || data.error };
     };
 
+    const addHabit = async (habitData) => {
+        const res = await fetch('/api/habits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(habitData),
+        });
+        const data = await res.json();
+        if (res.ok) setHabits(prev => [...prev, data]);
+        return { ok: res.ok, message: data.message || data.error };
+    };
+
+    const deleteHabit = async (habitId) => {
+        const res = await fetch('/api/habits', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ habitId }),
+        });
+        const data = await res.json();
+        if (res.ok) setHabits(prev => prev.filter(h => h._id !== habitId));
+        return { ok: res.ok, message: data.message || data.error };
+    };
+
     return (
         <StreakerContext.Provider value={{
             totalEarned,
@@ -135,6 +157,8 @@ export const StreakerProvider = ({ children }) => {
             sendPartnerRequest,
             respondToPartnerRequest,
             removePartner,
+            addHabit,
+            deleteHabit,
             refreshData: fetchData,
         }}>
             {children}

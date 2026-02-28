@@ -1,6 +1,5 @@
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
-import Habit from '@/models/Habit';
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 
@@ -50,12 +49,6 @@ export async function POST(request) {
             avatarSeed,
         });
 
-        // Create 3 default habits
-        await Habit.insertMany([
-            { userId: user._id, name: 'Morning 5km Run', description: 'Run at least 5km before 9:00 AM.', streak: 0, icon: '🏃', color: 'accent-blue', history: [] },
-            { userId: user._id, name: 'Mindful Meditation', description: '15 minutes of guided meditation daily.', streak: 0, icon: '🧘', color: 'accent-purple', history: [] },
-            { userId: user._id, name: 'Read 20 Pages', description: 'Read at least 20 pages of a book daily.', streak: 0, icon: '📖', color: 'accent-green', history: [] },
-        ]);
 
         return NextResponse.json({ message: 'Account created successfully!', username }, { status: 201 });
     } catch (error) {

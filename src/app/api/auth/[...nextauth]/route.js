@@ -85,11 +85,7 @@ export const authOptions = {
                             username,
                             avatarSeed,
                         });
-                        await Habit.insertMany([
-                            { userId: dbUser._id, name: 'Morning 5km Run', description: 'Run at least 5km before 9:00 AM.', streak: 0, icon: '🏃', color: 'accent-blue', history: [] },
-                            { userId: dbUser._id, name: 'Mindful Meditation', description: '15 minutes of guided meditation daily.', streak: 0, icon: '🧘', color: 'accent-purple', history: [] },
-                            { userId: dbUser._id, name: 'Read 20 Pages', description: 'Read at least 20 pages of a book.', streak: 0, icon: '📖', color: 'accent-green', history: [] },
-                        ]);
+                        // No default habits — user creates their own after finding a partner
                     } else {
                         // Backfill username/avatarSeed for existing Google users
                         let updated = false;

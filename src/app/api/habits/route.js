@@ -8,7 +8,9 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const PENALTY_AMOUNT = 50; // $50 penalty per missed habit
+const PENALTY_AMOUNT = 50;
+
+const VALID_COLORS = ['accent-blue', 'accent-purple', 'accent-green', 'accent-red'];
 
 export async function GET() {
     try {
@@ -18,7 +20,6 @@ export async function GET() {
         const habits = await Habit.find({ userId: session.user.id }).lean();
         return NextResponse.json(habits);
     } catch (error) {
-        console.error('[GET HABITS ERROR]', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
@@ -27,63 +28,91 @@ export async function POST(req) {
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
         await dbConnect();
-        const { habitId, status } = await req.json();
-        const habit = await Habit.findOne({ _id: habitId, userId: session.user.id });
 
-        if (!habit) return NextResponse.json({ error: 'Habit not found' }, { status: 404 });
+        const body = await req.json();
 
-        // Prevent marking the same habit twice in one day
-        if (habit.status) return NextResponse.json({ error: 'Already marked for today' }, { status: 400 });
+        // ── Route A: Mark habit status ──
+        if (body.habitId && body.status) {
+            const { habitId, status } = body;
+            const habit = await Habit.findOne({ _id: habitId, userId: session.user.id });
+            if (!habit) return NextResponse.json({ error: 'Habit not found' }, { status: 404 });
+            if (habit.status) return NextResponse.json({ error: 'Already marked for today' }, { status: 400 });
 
-        // Update streak and history
-        if (status === 'completed') {
-            habit.streak += 1;
-            habit.history.push(true);
-        } else if (status === 'missed') {
-            habit.streak = 0;
-            habit.history.push(false);
-        }
+            if (status === 'completed') {
+                habit.streak += 1;
+                habit.history.push(true);
+            } else if (status === 'missed') {
+                habit.streak = 0;
+                habit.history.push(false);
+            }
+            habit.status = status;
+            await habit.save();
 
-        // Always set the status so it can't be re-marked
-        habit.status = status;
-        await habit.save();
-
-        // On miss → create penalty transactions
-        if (status === 'missed') {
-            const user = await User.findById(session.user.id).lean();
-            const userName = user?.name || 'User';
-
-            // 1. Transaction for the person who MISSED (they owe money - debit)
-            await Transaction.create({
-                userId: session.user.id,
-                type: 'penalty',
-                amount: PENALTY_AMOUNT,
-                reason: `Missed habit: ${habit.name}`,
-                from: userName,
-                to: 'Accountability Partner',
-                status: 'pending',
-            });
-
-            // 2. Transaction for the PARTNER (they RECEIVE money - shown as incoming)
-            if (user?.partnerId) {
-                const partnerIdStr = user.partnerId.toString();
+            if (status === 'missed') {
+                const user = await User.findById(session.user.id).lean();
+                const userName = user?.name || 'User';
                 await Transaction.create({
-                    userId: partnerIdStr,       // ← partner's ID so it appears in THEIR ledger
-                    type: 'reward',             // partner earns the penalty money
+                    userId: session.user.id,
+                    type: 'penalty',
                     amount: PENALTY_AMOUNT,
-                    reason: `${userName} missed: ${habit.name}`,
+                    reason: `Missed habit: ${habit.name}`,
                     from: userName,
-                    to: 'You',
+                    to: 'Accountability Partner',
                     status: 'pending',
                 });
+                if (user?.partnerId) {
+                    await Transaction.create({
+                        userId: user.partnerId.toString(),
+                        type: 'reward',
+                        amount: PENALTY_AMOUNT,
+                        reason: `${userName} missed: ${habit.name}`,
+                        from: userName,
+                        to: 'You',
+                        status: 'pending',
+                    });
+                }
             }
+            return NextResponse.json(habit);
         }
 
-        return NextResponse.json(habit);
+        // ── Route B: Create new habit ──
+        const { name, description, icon, color } = body;
+        if (!name) return NextResponse.json({ error: 'Habit name is required' }, { status: 400 });
+
+        // Check user has a partner
+        const user = await User.findById(session.user.id).lean();
+        if (!user?.partnerId) {
+            return NextResponse.json({ error: 'You need an accountability partner to add habits' }, { status: 403 });
+        }
+
+        const habit = await Habit.create({
+            userId: session.user.id,
+            name: name.trim(),
+            description: description?.trim() || '',
+            icon: icon || '🎯',
+            color: VALID_COLORS.includes(color) ? color : 'accent-blue',
+            streak: 0,
+            history: [],
+        });
+
+        return NextResponse.json(habit, { status: 201 });
     } catch (error) {
         console.error('[POST HABIT ERROR]', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
+export async function DELETE(req) {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        await dbConnect();
+        const { habitId } = await req.json();
+        const result = await Habit.findOneAndDelete({ _id: habitId, userId: session.user.id });
+        if (!result) return NextResponse.json({ error: 'Habit not found' }, { status: 404 });
+        return NextResponse.json({ message: 'Habit deleted' });
+    } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
