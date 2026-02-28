@@ -9,8 +9,16 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const PENALTY_AMOUNT = 50;
-
 const VALID_COLORS = ['accent-blue', 'accent-purple', 'accent-green', 'accent-red'];
+
+// Returns true if the given date is the same calendar day as today (in local time)
+function isToday(date) {
+    const d = new Date(date);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate();
+}
 
 export async function GET() {
     try {
@@ -18,7 +26,14 @@ export async function GET() {
         if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         await dbConnect();
         const habits = await Habit.find({ userId: session.user.id }).lean();
-        return NextResponse.json(habits);
+
+        // If a habit's status was set on a PREVIOUS day, hide it so the button reappears
+        const withDailyStatus = habits.map(h => ({
+            ...h,
+            status: h.status && isToday(h.updatedAt) ? h.status : null,
+        }));
+
+        return NextResponse.json(withDailyStatus);
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -37,7 +52,10 @@ export async function POST(req) {
             const { habitId, status } = body;
             const habit = await Habit.findOne({ _id: habitId, userId: session.user.id });
             if (!habit) return NextResponse.json({ error: 'Habit not found' }, { status: 404 });
-            if (habit.status) return NextResponse.json({ error: 'Already marked for today' }, { status: 400 });
+            // Only block if already marked TODAY — allows re-marking on a new calendar day
+            if (habit.status && isToday(habit.updatedAt)) {
+                return NextResponse.json({ error: 'Already marked for today' }, { status: 400 });
+            }
 
             if (status === 'completed') {
                 habit.streak += 1;
