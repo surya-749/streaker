@@ -135,8 +135,8 @@ export default function Profile() {
             {/* ── Stats row ── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                    { icon: '💸', label: 'Spent', value: `$${(totalSpent || 0).toFixed(2)}`, color: '#ef4444' },
-                    { icon: '💰', label: 'Earned', value: `$${(totalEarned || 0).toFixed(2)}`, color: '#10b981' },
+                    { icon: '💸', label: 'Spent', value: `₹${(totalSpent || 0).toFixed(2)}`, color: '#ef4444' },
+                    { icon: '💰', label: 'Earned', value: `₹${(totalEarned || 0).toFixed(2)}`, color: '#10b981' },
                     { icon: '🔥', label: 'Best Streak', value: `${bestHabit?.streak ?? 0}d`, color: '#f59e0b' },
                     { icon: '✓', label: 'Habits', value: habits.length, color: '#2463eb' },
                 ].map((s, i) => (

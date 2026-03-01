@@ -72,7 +72,7 @@ export default function Navbar() {
                                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                                 <span className="text-white/30 font-semibold">Net</span>
                                 <span className="font-black" style={{ color: netBalance >= 0 ? '#10b981' : '#ef4444' }}>
-                                    {netBalance >= 0 ? '+' : ''}${netBalance.toFixed(2)}
+                                    {netBalance >= 0 ? '+' : ''}₹{netBalance.toFixed(2)}
                                 </span>
                             </div>
 

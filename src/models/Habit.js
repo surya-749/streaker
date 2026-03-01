@@ -9,6 +9,9 @@ const HabitSchema = new mongoose.Schema({
     icon: { type: String, default: '⚡' },
     color: { type: String, default: 'accent-blue' },
     history: { type: [Boolean], default: [] },
+    // Auto-penalty tracking (date strings like "2026-03-01")
+    lastMarkedDate: { type: String, default: null },
+    lastPenaltyDate: { type: String, default: null },
 }, { timestamps: true });
 
 export default mongoose.models.Habit || mongoose.model('Habit', HabitSchema);

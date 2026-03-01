@@ -50,20 +50,120 @@ function DonutRing({ pct, color, size = 80, stroke = 8 }) {
     );
 }
 
-// ─── Week grid heatmap ────────────────────────────────────────────────────────
-function WeekGrid({ history = [], colorKey }) {
+// ─── Calendar heatmap ────────────────────────────────────────────────────────
+function CalendarHeatmap({ history = [], colorKey, lastMarkedDate = null }) {
     const c = getColor(colorKey);
-    const cells = [...Array(49).fill(null), ...history].slice(-49); // 7 weeks × 7 days
+
+    // Always use UTC to match the API's date strings (which use toISOString)
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10);
+
+    const ROWS = 6;
+    const COLS = 7;
+    const TOTAL = ROWS * COLS;
+
+    // If user already marked today, history[last] = today (offset 0).
+    // Otherwise history[last] = yesterday from auto-backfill (offset 1).
+    const lastOffset = lastMarkedDate === todayStr ? 0 : 1;
+
+    // Map history to UTC dates: history[0] = oldest, history[last] = today or yesterday
+    const entries = history.map((value, i) => {
+        const d = new Date(today);
+        d.setUTCDate(d.getUTCDate() - (history.length - 1 - i) - lastOffset);
+        return { date: d, dateStr: d.toISOString().slice(0, 10), value };
+    });
+
+    // Find day-of-week of first entry (Mon=0 … Sun=6) using UTC day
+    const firstDayOfWeek = entries.length > 0
+        ? (entries[0].date.getUTCDay() + 6) % 7
+        : 0;
+
+    const aligned = [
+        ...Array(firstDayOfWeek).fill(null),
+        ...entries,
+        ...Array(TOTAL).fill(null),
+    ].slice(0, TOTAL);
+
+    const weeks = Array.from({ length: ROWS }, (_, r) => aligned.slice(r * COLS, (r + 1) * COLS));
+
+    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
-            {cells.map((v, i) => (
-                <div key={i} style={{
-                    width: 12, height: 12, borderRadius: 3,
-                    background: v === true ? c.hex : v === false ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.04)',
-                    boxShadow: v === true ? `0 0 5px ${c.hex}60` : 'none',
-                    transition: 'all 0.2s',
-                }} />
-            ))}
+        <div style={{ userSelect: 'none' }}>
+            {/* Day-of-week header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '38px repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
+                <div />
+                {DAY_LABELS.map(d => (
+                    <div key={d} style={{ fontSize: 9, color: 'rgba(255,255,255,0.18)', textAlign: 'center', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d}</div>
+                ))}
+            </div>
+
+            {/* Weeks */}
+            {weeks.map((week, ri) => {
+                const firstCell = week.find(cell => cell?.date);
+                const weekLabel = firstCell
+                    ? firstCell.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+                    : '';
+                return (
+                    <div key={ri} style={{ display: 'grid', gridTemplateColumns: '38px repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {weekLabel}
+                        </div>
+                        {week.map((cell, ci) => {
+                            const isToday = cell?.dateStr === todayStr;
+                            const bg = !cell
+                                ? 'rgba(255,255,255,0.03)'
+                                : cell.value === true
+                                    ? c.hex
+                                    : cell.value === false
+                                        ? 'rgba(239,68,68,0.28)'
+                                        : 'rgba(255,255,255,0.03)';
+                            const shadow = cell?.value === true ? `0 0 7px ${c.hex}65` : 'none';
+                            const tooltip = cell?.dateStr
+                                ? `${cell.date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}: ${
+                                    cell.value === true ? 'Completed ✓' : cell.value === false ? 'Missed ✗' : 'No data'
+                                }`
+                                : '';
+                            return (
+                                <div
+                                    key={ci}
+                                    title={tooltip}
+                                    style={{
+                                        height: 18,
+                                        borderRadius: 4,
+                                        background: bg,
+                                        boxShadow: shadow,
+                                        border: isToday ? '1.5px solid rgba(255,255,255,0.35)' : '1.5px solid transparent',
+                                        transition: 'transform 0.15s, box-shadow 0.15s',
+                                        cursor: cell ? 'default' : 'default',
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.25)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                                />
+                            );
+                        })}
+                    </div>
+                );
+            })}
+
+            {/* Legend */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10 }}>
+                {[
+                    { bg: c.hex, shadow: `0 0 4px ${c.hex}70`, label: 'Done' },
+                    { bg: 'rgba(239,68,68,0.28)', shadow: 'none', label: 'Missed' },
+                    { bg: 'rgba(255,255,255,0.03)', shadow: 'none', label: 'No data', border: '1px solid rgba(255,255,255,0.08)' },
+                ].map(({ bg, shadow, label, border }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <div style={{ width: 11, height: 11, borderRadius: 3, background: bg, boxShadow: shadow, border: border || 'none' }} />
+                        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.22)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+                    </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ width: 11, height: 11, borderRadius: 3, background: 'rgba(255,255,255,0.03)', border: '1.5px solid rgba(255,255,255,0.35)' }} />
+                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.22)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today</span>
+                </div>
+            </div>
         </div>
     );
 }
@@ -138,7 +238,7 @@ export default function Analytics() {
                     { icon: '📊', label: 'Avg Streak', value: `${avgStreak}d`, color: '#f59e0b' },
                     { icon: '✅', label: 'Overall Rate', value: `${overallRate}%`, color: '#10b981' },
                     { icon: '✓', label: 'Today', value: `${completedToday}/${habits.length}`, color: '#2463eb' },
-                    { icon: '💰', label: 'Balance', value: `$${walletBalance?.toFixed(2) ?? '0.00'}`, color: '#10b981' },
+                    { icon: '💰', label: 'Balance', value: `₹${walletBalance?.toFixed(2) ?? '0.00'}`, color: '#10b981' },
                 ].map((s, i) => (
                     <div key={i} className="rounded-2xl p-4 flex flex-col gap-1 transition-all hover:translate-y-[-1px]"
                         style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -230,10 +330,10 @@ export default function Analytics() {
                                     <Sparkline history={focusHistory} colorKey={focus.color} />
                                 </div>
 
-                                {/* 7-week heatmap */}
+                                {/* Calendar heatmap */}
                                 <div>
-                                    <p className="text-xs text-white/30 uppercase tracking-widest font-semibold mb-3">7-Week Heatmap</p>
-                                    <WeekGrid history={focusHistory} colorKey={focus.color} />
+                                    <p className="text-xs text-white/30 uppercase tracking-widest font-semibold mb-3">Activity Calendar</p>
+                                    <CalendarHeatmap history={focusHistory} colorKey={focus.color} lastMarkedDate={focus.lastMarkedDate} />
                                 </div>
 
                                 {/* Progress bar */}
@@ -317,9 +417,9 @@ export default function Analytics() {
                         <h2 className="text-sm font-bold text-white">Financial Summary</h2>
                         <div className="space-y-3">
                             {[
-                                { label: 'Penalties paid', value: `-$${penaltyTotal.toFixed(2)}`, color: '#ef4444', icon: '💸' },
-                                { label: 'Rewards earned', value: `+$${rewardTotal.toFixed(2)}`, color: '#10b981', icon: '🎁' },
-                                { label: 'Net P&L', value: `${rewardTotal - penaltyTotal >= 0 ? '+' : ''}$${(rewardTotal - penaltyTotal).toFixed(2)}`, color: rewardTotal - penaltyTotal >= 0 ? '#10b981' : '#ef4444', icon: '📊' },
+                                { label: 'Penalties paid', value: `-₹${penaltyTotal.toFixed(2)}`, color: '#ef4444', icon: '💸' },
+                                { label: 'Rewards earned', value: `+₹${rewardTotal.toFixed(2)}`, color: '#10b981', icon: '🎁' },
+                                { label: 'Net P&L', value: `${rewardTotal - penaltyTotal >= 0 ? '+' : ''}₹${(rewardTotal - penaltyTotal).toFixed(2)}`, color: rewardTotal - penaltyTotal >= 0 ? '#10b981' : '#ef4444', icon: '📊' },
                             ].map((row, i) => (
                                 <div key={i} className="flex items-center justify-between py-2"
                                     style={{ borderBottom: i < 2 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
@@ -332,7 +432,7 @@ export default function Analytics() {
                         </div>
                         <div className="pt-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                             <span className="text-xs text-white/30 font-semibold uppercase tracking-widest">Current Balance</span>
-                            <span className="text-lg font-black text-green-400">${walletBalance?.toFixed(2) ?? '0.00'}</span>
+                            <span className="text-lg font-black text-green-400">₹{walletBalance?.toFixed(2) ?? '0.00'}</span>
                         </div>
                     </div>
 

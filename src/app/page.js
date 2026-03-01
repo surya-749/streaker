@@ -23,7 +23,8 @@ const COLOR_OPTIONS = [
 
 function MiniHeatmap({ history = [], colorKey }) {
   const c = getC(colorKey);
-  const cells = [...Array(14).fill(null), ...history].slice(-14);
+  // Show latest 14 entries, pad with nulls at the end so data fills from top-left
+  const cells = [...history.slice(-14), ...Array(14).fill(null)].slice(0, 14);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
       {cells.map((v, i) => (
@@ -53,7 +54,7 @@ function HabitCard({ habit, onDelete }) {
       }}>
       <div style={{ height: 3, background: done ? c.hex : 'rgba(255,255,255,0.05)', transition: 'background 0.4s' }} />
 
-      {/* Delete button */}
+      {/* Delete button — 2-click confirm */}
       <button
         onClick={() => confirmDelete ? onDelete(habit._id) : setConfirmDelete(true)}
         onBlur={() => setTimeout(() => setConfirmDelete(false), 200)}
@@ -125,7 +126,7 @@ function HabitCard({ habit, onDelete }) {
               background: done ? c.bg : 'rgba(239,68,68,0.1)', color: done ? c.hex : '#ef4444',
               border: `1px solid ${done ? c.border : 'rgba(239,68,68,0.2)'}`
             }}>
-            {done ? `✓ Done · ${habit.streak}-day streak 🔥` : '✕ Missed today — $50 penalty'}
+            {done ? `✓ Done · ${habit.streak}-day streak 🔥` : '✕ Missed today — ₹50 penalty'}
           </div>
         )}
       </div>
@@ -295,9 +296,9 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { icon: '🔥', label: 'Total Streak', value: `${totalStreak}d`, color: '#ef4444' },
-            { icon: '💸', label: 'Spent', value: `$${(totalSpent || 0).toFixed(2)}`, color: '#ef4444' },
-            { icon: '💰', label: 'Earned', value: `$${(totalEarned || 0).toFixed(2)}`, color: '#10b981' },
-            { icon: '📊', label: 'Net P&L', value: `${netPL >= 0 ? '+' : ''}$${netPL.toFixed(2)}`, color: netPL >= 0 ? '#10b981' : '#ef4444' },
+            { icon: '💸', label: 'Spent', value: `₹${(totalSpent || 0).toFixed(2)}`, color: '#ef4444' },
+            { icon: '💰', label: 'Earned', value: `₹${(totalEarned || 0).toFixed(2)}`, color: '#10b981' },
+            { icon: '📊', label: 'Net P&L', value: `${netPL >= 0 ? '+' : ''}₹${netPL.toFixed(2)}`, color: netPL >= 0 ? '#10b981' : '#ef4444' },
           ].map((s, i) => (
             <div key={i} className="rounded-2xl p-4 flex flex-col gap-1 transition-all hover:-translate-y-0.5"
               style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -376,14 +377,14 @@ export default function Dashboard() {
               <div className="space-y-2.5">
                 {transactions.map(t => (
                   <div key={t._id} className="rounded-2xl p-3.5 space-y-2.5 transition-opacity"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', opacity: t.status === 'confirmed' ? 0.35 : 1 }}>
+                    style={{ background: 'rgba(241, 0, 0, 0.02)', border: '1px solid rgba(255,255,255,0.05)', opacity: t.status === 'confirmed' ? 0.35 : 1 }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] text-white/40 uppercase tracking-widest font-semibold truncate">{t.reason}</p>
                         <p className="text-sm font-semibold text-white truncate mt-0.5">{t.from} → {t.to}</p>
                       </div>
                       <span className="text-sm font-black shrink-0" style={{ color: t.type === 'penalty' ? '#ef4444' : '#10b981' }}>
-                        {t.type === 'penalty' ? '−' : '+'}${t.amount?.toFixed(2)}
+                        {t.type === 'penalty' ? '−' : '+'}₹{t.amount?.toFixed(2)}
                       </span>
                     </div>
                     {t.status === 'pending' && (
@@ -407,7 +408,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                 <span className="text-[10px] text-white/25 font-semibold uppercase tracking-widest">Net P&L</span>
                 <span className="text-base font-black" style={{ color: netPL >= 0 ? '#10b981' : '#ef4444' }}>
-                  {netPL >= 0 ? '+' : ''}${netPL.toFixed(2)}
+                  {netPL >= 0 ? '+' : ''}₹{netPL.toFixed(2)}
                 </span>
               </div>
             </div>
